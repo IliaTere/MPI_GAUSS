@@ -1,0 +1,212 @@
+\documentclass[12pt, a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{times}
+\usepackage{mathptmx}
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[english,russian]{babel}
+\usepackage[T2A]{fontenc}
+
+
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{TRE} {rgb}{0.9,0.3,0.5}
+
+\lstset { %
+    language=C++,
+    backgroundcolor=\color{black!5}, 
+    basicstyle=\footnotesize,
+}
+
+\usepackage[
+  a4paper, mag=1000, includefoot,
+  left=1.1cm, right=1.1cm, top=1.2cm, bottom=1.2cm, headsep=0.8cm, footskip=0.8cm
+]{geometry}
+
+
+
+\mathsurround=0.1em
+\clubpenalty=1000%
+\widowpenalty=1000%
+\brokenpenalty=2000%
+\frenchspacing%
+\tolerance=2500%
+\hbadness=1500%
+\vbadness=1500%
+\doublehyphendemerits=50000%
+\finalhyphendemerits=25000%
+\adjdemerits=50000%
+
+\title{Отчет по анализу блочного алгоритма нахождения обратной матрицы методом Гаусса с выбором элемента по столбцу(MPI)}
+\author{Терешенко Илья}
+
+\begin{document}
+
+\maketitle
+
+\section{Постановка задачи}
+Найти для матрицы A = $\begin{pmatrix}
+     a_{11}& a_{12} &\ldots & a_{1n}\\
+     a_{21}& a_{22} &\ldots & a_{2n}\\
+     \vdots& \vdots &\ddots & \vdots\\
+     a_{n1}& a_{n2} &\ldots & a_{nn}    
+    \end{pmatrix}$ обратную матрицу методом Гаусса с выбором главного элемента по столбцу
+
+\section{Разделение данных на свои и чужие}
+Своими данными для каждого процесса будем считать блочные строки матрицы, занумерованные следующим образом A = $\begin{pmatrix}
+     A_{11}& A_{12} &\ldots & A_{1n} | 1\\
+     \hline
+     A_{21}& A_{22} &\ldots & A_{2n}| 2\\
+     \hline
+     \vdots& \vdots && \vdots\\
+     \hline
+     A_{p1}& A_{p2} &\ldots & A_{pn}|p\\
+     \hline
+     A_{(p+1)1}& A_{(p+1)2} &\ldots & A_{(p+1)n}|1\\
+     \hline
+      A_{(p+2)1}& A_{(p+2)2} &\ldots & A_{(p+2)n}|2\\
+     \vdots& \vdots &\ddots & \vdots\\
+     A_{n1}& A_{n2} &\ldots & A_{nn}    
+    \end{pmatrix}$, где p это количество потоков. Аналогично для присоединенной матрицы. Каждый процесс имеет доступ к своим данным и не имеет доступа к чужим. Для того что заполнять матрицу, а также делать различные преобразования над строками между процессами необходимо уметь переходить от глобальной нумерации к локальной. Для этого будет использовать следующие функции.
+    \begin{lstlisting}[language=C++,
+tabsize=2,
+stepnumber=1,
+numbers=left,
+ commentstyle=\itshape \color{TRE},
+backgroundcolor=\color{backcolour},
+basicstyle=\ttfamily\small,
+frame=single,
+breaklines=true,   
+breakatwhitespace=true,
+emphstyle=\itshape,
+keywordstyle=\color{blue} ]
+int g2l(int n, int m, int p, int k, int i_glob)
+{
+  int i_glob_m = i_glob/m;
+  int i_loc_m = i_glob_m/p;
+  return i_loc_m*m+i_glob%m;
+}
+\end{lstlisting}
+\begin{lstlisting}[language=C++,
+tabsize=2,
+stepnumber=1,
+numbers=left,
+ commentstyle=\itshape \color{TRE},
+backgroundcolor=\color{backcolour},
+basicstyle=\ttfamily\small,
+frame=single,
+breaklines=true,   
+breakatwhitespace=true,
+emphstyle=\itshape,
+keywordstyle=\color{blue} ]
+int l2g(int n, int m, int p, int k, int i_loc)
+{
+  int i_loc_m = i_loc/m;
+  int i_global_m = i_loc_m*p + k;
+  return i_global_m*m+i_loc%m;
+}
+\end{lstlisting}
+
+\section {Описание алгоритма}
+g - номер процесса, l = n\%m, k=n/m, bl = (l==0?k:k+1), p - количество процессов
+\begin{enumerate}
+    \item На шаге с номером step каждый процесс, который хранит строку с номером $\geq step$ ( в глобальной нумерации) находит норму обратной матрицы для блока с номером $(i, step),\ i\in \{g+jp\}\ j =1\dots bl$ (в глобальной нумерации) в локальной нумерации необходимо найти обратную матрицу к блоку с указателем на начало = $(step-1)m^2$, т.e к блоку $(0, step)$.
+    \item С помощю \text{MPI\_Allreduce} процессы находят блок с наименьшей нормой обратного среди всех, если такого блока не найдено, то алгоритм не применим.
+    \item Пусть такой блок найден и его номер t, тогда \text{MPI\_Bcast} блока с наименьшей нормой обратной всем остальным от процесса, который его нашел. С помощью \text{MPI\_sendrecv} обмениваются строками владелец строки с номером step и владелец строки с номером t. На этом шаге размер отправляемых данных: $m*m + 2m*n$
+    \item Каждый процесс домножает свои блоки в буффере на полученный блок слева\\
+    $(Block)^{-1}  Buf_{0i}, i\in \{step+1,\ldots, bl\} $\\
+    $(Block)^{-1}  Buf1_{0i}, i\in \{0,\ldots, bl\}$ Buf1 - строка от присоединенной матрицы.\\ После чего вычитает из своих блочный строк по таким формулам: \\
+    $A_{ij} = A_{ij} - Buf_{0j}*A_{i,step};\ j \in \{step+1,\dots, bl\} , i\in \{0,\dots, rows\}$\\
+    $ rows = (n+m-1)/m\%p=k?b/p:b/(p+1)$\\
+    $B_{ij} = B_{ij}-Buf1_{0j}*A_{i,step}; j\in \{0,\dots , bl\};\ i\in \{0,\dots, rows\}$
+    \item На шаге с номером k+1 процесс, который владет k+1-ой строкой в глобальной нумерации находит обратную матрицу для блока $A_{rows, rows}$(в локальной нумерации) и выполняет следующие \\
+    $B_{rows, i} = A^{-1}*B_{rows, i}; i\in \{0, \dots , rows\} $
+    \item Обратный ход. Находим владельца текущей строки $owner = step\%p$, который отправит \text{MPI\_Bcast} блока 
+    с локальными координатами $i=step/p*m + step*m\%m;A_{(i, step)}=A$, а также строку из приписанной матрицы B. Таким образом объем отправленных данных $m*m+n*m$.\\
+    Все процессы работают по таким формулам: \\
+    $B_{ji} = B_{ji} - B^{owner}_{step,i}*A_{step-1, step};\ где j\in \{step-1,\dots, 0\}; i\in \{0,\dots,bl\}$
+\end{enumerate}
+
+
+\section{Нахождение сложности}
+
+В данном разделе будет использован факт о том, что сложность нахождения обратной матрицы размера $n \times n$ неблочным методом Гаусса составляет $\frac{8}{3} \times n^3 + O(n^2)$ и сложность умножения двух матриц того же размера $2n^3 - n^2$. Распишем по пунктам сложность групп операций алгоритма:
+\begin{enumerate}
+\item Для этого в первом столбце посчитаем обратные матрицы в количестве k штук, во втором k-1 и так далее до k столбца, где необходимо будет обратить 1 матрицу(позже на обратные матрицы выбранных элементов мы будем умножать соответствующие матричные строки). Получаем сложность(здесь и далее полагаем $k = \frac{n}{m}$ целым):
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,k)(\frac{8}{3}m^3 + O(m^2)) \times \sum_{i\in D}^{}i = (\frac{8}{3} m^3 + O(m^2)) \times \frac{(k+1)k}{2p} = (\frac{8}{3} m^3 + O(m^2)) \times \frac{(\frac{n}{m}+1)\frac{n}{m}}{2p} = \\ \frac{4}{3p}n^2m + \frac{4}{3p}nm^2 + O(n^2 + nm)
+\end{aligned}
+\end{equation} 
+\item В каждой строке исходной матрицы необходимо будет умножать по формуле (18) определенное количество элементов на обратную матрицу, найденную на соответсвующем шаге. Получаем сложность:
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,k-1)(2m^3 - m^2) \times \sum_{i \in D}^{}i = (2m^3 - m^2) \times \frac{k(k-1)}{2p} = (2m^3 - m^2) \times \frac{\frac{n}{m}(\frac{n}{m}-1)}{2p} = \\ \frac{n^2m}{p} - \frac{nm^2}{p} + O(n^2 + nm)
+\end{aligned}
+\end{equation}
+\item При занулении на step шаге необходимых элементов исходной матрицы по формуле (9) понадобится мультипликативных операций:
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,k-1)(2m^3 - m^2) \times \sum_{i \in D}^{}i^2 = (2m^3 - m^2) \times \frac{\frac{k}{p}(k-1)(2k+1)}{6} =\\ (2m^3 - m^2) \times \frac{\frac{n}{m}(\frac{n}{m}-1)(2\frac{n}{m}+1)}{6p} = \frac{2}{3p}n^3 - \frac{1}{3p}n^2m - \frac{1}{3p}nm^2 + O(n^2 + nm)
+\end{aligned}
+\end{equation}
+\item При занулении на p шаге необходимых элементов исходной матрицы по формуле (9) понадобится аддитивных операций(учитывая, что для вычитания из матрицы m на m матрицы того же размера необходимо $m^2$ операций):
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,k-1) |m^2 \times \sum_{i \in D}i^2 = m^2 \times \frac{\frac{k}{p}(k-1)(2k+1)}{6} = m^2 \times \frac{\frac{n}{mp}(\frac{n}{m}-1)(2\frac{n}{m}+1)}{6} = \\ \frac{n^3}{3mp} - \frac{n^2}{6p} - \frac{nm}{6p} = O(n^2 + nm)
+\end{aligned}
+\end{equation}
+\item Теперь обратимся к присоединенной матрице. Сложность операций умножения на обратные матрицы:
+\begin{equation}
+\frac{k^2}{p} \times (2m^3 - m^2) = \frac{n^2}{m^2p} \times (2m^3 - m^2) =\frac{1}{p} (2n^2m - n^2) = \frac{2n^2m}{p} + O(n^2)
+\end{equation}
+\item Для умножения блоков присоединенной матрицы при вычислениях по формуле (26) понадобится мультипликативных операций:
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,n/m-1)\\(2m^3 - m^2) \times k \times \sum_{i \in D}i = (2m^3 - m^2) \times \frac{n}{m} \times \sum_{i \in D}i = \\ (2m^3 - m^2) \times \frac{n}{m} \times \frac{\frac{n}{mp}(\frac{n}{m}-1)}{2} = \frac{n^3}{p} - \frac{n^2m}{p} +O(n^2)
+\end{aligned}
+\end{equation}
+\item Для вычитания блоков присоединенной матрицы при вычислениях по формуле (26) понадобится аддитивных операций:
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,\frac{n}{m}-1)\\m^2 \times k \times \sum_{i \in D}i = m^2 \times \frac{n}{m} \times \sum_{i \in D}i = \\ m^2 \times \frac{n}{m} \times \frac{\frac{n}{mp}(\frac{n}{m}-1)}{2} = O(n^2)
+\end{aligned}
+\end{equation}
+\item Осталось рассмотреть обратный ход. Исходя из формулы (38) понадобится мультипликативных операций:
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,k-1)\\(2m^3 - m^2) \times k \times \sum_{i \in D}i = (2m^3 - m^2) \times \frac{n}{m} \times \sum_{i \in D}i = \\ (2m^3 - m^2) \times \frac{n}{m} \times \frac{\frac{n}{mp}(\frac{n}{m}-1)}{2} = \frac{n^3}{p} - \frac{n^2m}{p} +O(n^2)
+\end{aligned}
+\end{equation}
+\item Из формулы (38) аддитивных операций на обратный ход необходимо:
+\begin{equation}
+\begin{aligned}
+D=(g+1,g+1+p, ...,k-1)\\m^2 \times k \times \sum_{i \in D}i = m^2 \times \frac{n}{m} \times \sum_{i \in D}i = \\ m^2 \times \frac{n}{m} \times \frac{\frac{n}{mp}(\frac{n}{m}-1)}{2} = O(n^2)
+\end{aligned}
+\end{equation}
+\item Итого сложность:
+\begin{equation}
+S(n,m, p) = \frac{8}{3p}n^3 + \frac{3}{p}n^2m - \frac{nm^2}{p} + O(n^2 + m^2)
+\end{equation}
+\end{enumerate}
+
+\section{Сложность алгоритма в краевых случаях}
+\begin{equation}
+S(n,1, 1) = \frac{8}{3}n^3 + O(n^2)
+\end{equation}
+
+\begin{equation}
+S(n,n, p) = \frac{14}{3p}n^3 + O(n^2)
+\end{equation}
+\section{Оценка числа обменов}
+В процессе точки коммуникации вызываются на каждом шаге алгоритма 6 раз 
+\begin{equation}
+\sum_{i=1}^{n/m}6=6\frac{n}{m} = O(n)
+\end{equation}
+\section{Оценка объёма обменов}
+\begin{equation}
+    \sum_{i=1}^{\frac{n}{mp}}2(m^2+2mn) = \frac{n}{pm}2m^2 + 4\frac{n}{pm}mn=\frac{2nm}{p} + \frac{4}{p}n^2
+\end{equation}
+\end{document} 

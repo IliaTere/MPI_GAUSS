@@ -2,7 +2,12 @@
 #include <sstream>
 #include <cstdlib>
 #include <ctime>
-#include "functions.h"
+#include <mpi.h>
+#include "utils.h"
+#include "matrix_io.h"
+#include "matrix_operations.h"
+#include "matrix_inversion.h"
+#include "memory.h"
 
 int main (int argc, char *argv[])
 {
@@ -26,7 +31,6 @@ int main (int argc, char *argv[])
     double *llBlock1 = nullptr;
     double *llBlock2 = nullptr;
     int *indicesTable = nullptr;
-    //int *minInvertedNormIndices = nullptr;
     double *minInvertedNormList = nullptr; // 3 * p, triples - isInverted + invNorm + index for p - 1
     double *minInvNormIndexTriple = nullptr;
     int *invertedStatus = nullptr;
@@ -64,7 +68,6 @@ int main (int argc, char *argv[])
             }
 
             return -1;
-            //break;
     }
 
     locBlocks = numOfBlockColsInProc(matrixSize, blockSize, totalProc, curProc);
@@ -110,7 +113,7 @@ int main (int argc, char *argv[])
         freeAllMemory(matrix, invertedMatrix, blockStringBuf, blockRow, block1,
                       block2, block3, mlBlock, lmBlock, lmBlock1, llBlock,
                       llBlock1, llBlock2, indicesTable, minInvertedNormList, minInvNormIndexTriple,
-                      invertedStatus/*, procColNum, remSize*/);
+                      invertedStatus);
         if (curProc == 0) {
             printf("Reading error.\n");
         }
@@ -140,7 +143,7 @@ int main (int argc, char *argv[])
         freeAllMemory(matrix, invertedMatrix, blockStringBuf, blockRow, block1,
                       block2, block3, mlBlock, lmBlock, lmBlock1, llBlock,
                       llBlock1, llBlock2, indicesTable, minInvertedNormList, minInvNormIndexTriple,
-                      invertedStatus/*, procColNum, remSize*/);
+                      invertedStatus);
         if (curProc == 0) {
             //printf("Something went wrong.\n");
             printf("%s : Task = 12 Res1 = -1 Res2 = -1 T1 = %.2f T2 = 0 S = %d N = %d M = %d P = %d\n",
@@ -163,7 +166,6 @@ int main (int argc, char *argv[])
                     blockStringBuf, block1, com);
     }
 
-    //printf("%d %d\n", curProc, blockSize * procColNum);
     MPI_Barrier(com);
     errorTime = MPI_Wtime();
     r1 = findRes(matrix, invertedMatrix, blockStringBuf, blockRow,
@@ -192,7 +194,7 @@ int main (int argc, char *argv[])
     freeAllMemory(matrix, invertedMatrix, blockStringBuf, blockRow, block1,
                   block2, block3, mlBlock, lmBlock, lmBlock1, llBlock,
                   llBlock1, llBlock2, indicesTable, minInvertedNormList, minInvNormIndexTriple,
-                  invertedStatus/*, procColNum, remSize*/);
+                  invertedStatus);
 
     MPI_Finalize();
     return 0;

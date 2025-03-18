@@ -5,71 +5,54 @@ void freeAllMemory(double *matrix, double *invertedMatrix, double *blockStringBu
                    double *lmBlock1, double *llBlock, double *llBlock1, double *llBlock2, int *indicesTable,
                    double *minInvertedNormList, double *minInvNormIndexTriple, int *invertedStatus)
 {
-    if (matrix != nullptr) {
+    if (matrix != nullptr)
         delete [] matrix;
-    }
 
-    if (invertedMatrix != nullptr) {
+    if (invertedMatrix != nullptr)
         delete [] invertedMatrix;
-    }
 
-    if (invertedStatus != nullptr) {
+    if (invertedStatus != nullptr)
         delete [] invertedStatus;
-    }
 
-    if (blockRow != nullptr) {
+    if (blockRow != nullptr)
         delete [] blockRow;
-    }
 
-    if (mlBlock != nullptr) {
+    if (mlBlock != nullptr)
         delete [] mlBlock;
-    }
 
-    if (lmBlock != nullptr) {
+    if (lmBlock != nullptr)
         delete [] lmBlock;
-    }
 
-    if (lmBlock1 != nullptr) {
+    if (lmBlock1 != nullptr)
         delete [] lmBlock1;
-    }
 
-    if (llBlock != nullptr) {
+    if (llBlock != nullptr)
         delete [] llBlock;
-    }
 
-    if (llBlock1 != nullptr) {
+    if (llBlock1 != nullptr)
         delete [] llBlock1;
-    }
 
-    if (llBlock2 != nullptr) {
+    if (llBlock2 != nullptr)
         delete [] llBlock2;
-    }
 
-    if (blockStringBuf != nullptr) {
+    if (blockStringBuf != nullptr)
         delete [] blockStringBuf;
-    }
 
-    if (block1 != nullptr) {
+    if (block1 != nullptr)
         delete [] block1;
-    }
 
-    if (block2 != nullptr) {
+    if (block2 != nullptr)
         delete [] block2;
-    }
 
-    if (block3 != nullptr) {
+    if (block3 != nullptr)
         delete [] block3;
-    }
 
-    if (indicesTable != nullptr) {
+    if (indicesTable != nullptr)
         delete [] indicesTable;
-    }
 
-    if (minInvertedNormList != nullptr) {
+    if (minInvertedNormList != nullptr)
         delete [] minInvertedNormList;
-    }
 
-    if (minInvNormIndexTriple != nullptr) {
+    if (minInvNormIndexTriple != nullptr)
         delete [] minInvNormIndexTriple;
-    }
 } 

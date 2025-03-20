@@ -6,102 +6,91 @@
 
 void initInvertedStatus(int p, int k, int locBlocks, int totalBlocks, int *a)
 {
-    int i, j_loc, j_glob;
-    for (i = 0; i < totalBlocks; ++i) {
-        for (j_loc = 0; j_loc < locBlocks; ++j_loc) {
-            j_glob = local_to_global(1, p, k, j_loc);
-            a[i * locBlocks + j_loc] = (i == j_glob ? 1 : 0);
+    for (int row = 0; row < totalBlocks; row++) {
+        for (int col = 0; col < locBlocks; col++) {
+            int globalCol = local_to_global(1, p, k, col);
+            int status = (row == globalCol) ? 1 : 0;
+            a[row * locBlocks + col] = status;
         }
     }
 }
 
 int simpleInvert(int n, double *a, double *b, double corEl, int *indicesTable)
 {
-    int i;
-    int j;
-    int k;
-    double maxColEl;
-    double curColEl;
-    double div;
-    double multElem;
-    int iInd;
-    int replaceInd;
-    int tmpInd;
-    for (i = 0; i < n; ++i) {
-        indicesTable[i] = i;
+    for (int idx = 0; idx < n; idx++) {
+        indicesTable[idx] = idx;
     }
 
-    for (i = 0; i < n; ++i) {       
-        j = 0;
-        while (indicesTable[j] != i) {
-            ++j;
+    for (int row = 0; row < n; row++) {
+        int currentPos = 0;
+        while (indicesTable[currentPos] != row) {
+            currentPos++;
         }
 
-        iInd = j;
-        replaceInd = iInd;
-        maxColEl = fabs(a[iInd * n + i]);
-        for (j = 0; j < n; ++j) {
-            if (indicesTable[j] > i) {
-                curColEl = fabs(a[j * n + i]);
-                if (curColEl > maxColEl) {
-                    replaceInd = j;
-                    maxColEl = curColEl;
+        int pivotPos = currentPos;
+        double pivotValue = fabs(a[currentPos * n + row]);
+        
+        for (int searchRow = 0; searchRow < n; searchRow++) {
+            if (indicesTable[searchRow] > row) {
+                double candidate = fabs(a[searchRow * n + row]);
+                if (candidate > pivotValue) {
+                    pivotPos = searchRow;
+                    pivotValue = candidate;
                 }
             }
         }
 
-        if (fabs(maxColEl) < (EPS * corEl)) {
+        if (fabs(pivotValue) < (EPS * corEl)) {
             return 1;
         }
 
-        if (replaceInd != iInd) {
-            indicesTable[iInd] = indicesTable[replaceInd];
-            indicesTable[replaceInd] = i;
+        if (pivotPos != currentPos) {
+            int temp = indicesTable[currentPos];
+            indicesTable[currentPos] = indicesTable[pivotPos];
+            indicesTable[pivotPos] = temp;
         }
 
-        div = a[replaceInd * n + i];
-        for (j = i + 1; j < n; ++j) {
-            a[replaceInd * n + j] /= div; 
+        double pivot = a[pivotPos * n + row];
+        for (int col = row + 1; col < n; col++) {
+            a[pivotPos * n + col] /= pivot;
+        }
+        for (int col = 0; col < n; col++) {
+            b[pivotPos * n + col] /= pivot;
         }
 
-        for (j = 0; j < n; ++j) {
-            b[replaceInd * n + j] /= div;
-        }
-
-        for (j = 0; j < n; ++j) {
-            if (indicesTable[j] > i) {
-                multElem = a[j * n + i];
-                for (k = i + 1; k < n; ++k) {
-                    a[j * n + k] -= (a[replaceInd * n + k] * multElem);
+        for (int elimRow = 0; elimRow < n; elimRow++) {
+            if (indicesTable[elimRow] > row) {
+                double factor = a[elimRow * n + row];
+                for (int col = row + 1; col < n; col++) {
+                    a[elimRow * n + col] -= a[pivotPos * n + col] * factor;
                 }
-
-                for (k = 0; k < n; ++k) {
-                    b[j * n + k] -= (b[replaceInd * n + k] * multElem);
-                }
-            }
-        }
-    }
-
-    for (i = n - 1; i > 0; --i) {
-        tmpInd = 0;
-        while (indicesTable[tmpInd] != i) {
-            ++tmpInd;
-        }
-
-        for (j = 0; j < n; ++j) {
-            if (indicesTable[j] < i) {
-                multElem = a[j * n + i];
-                for (k = 0; k < n; ++k) {
-                    b[j * n + k] -= (b[tmpInd * n + k] * multElem);
+                for (int col = 0; col < n; col++) {
+                    b[elimRow * n + col] -= b[pivotPos * n + col] * factor;
                 }
             }
         }
     }
 
-    for (i = 0; i < n; ++i) {
-        tmpInd = indicesTable[i];
-        for (j = 0; j < n; ++j) {
-            a[tmpInd * n + j] = b[i * n + j];
+    for (int row = n - 1; row > 0; row--) {
+        int currentPos = 0;
+        while (indicesTable[currentPos] != row) {
+            currentPos++;
+        }
+
+        for (int elimRow = 0; elimRow < n; elimRow++) {
+            if (indicesTable[elimRow] < row) {
+                double factor = a[elimRow * n + row];
+                for (int col = 0; col < n; col++) {
+                    b[elimRow * n + col] -= b[currentPos * n + col] * factor;
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < n; i++) {
+        int targetRow = indicesTable[i];
+        for (int j = 0; j < n; j++) {
+            a[targetRow * n + j] = b[i * n + j];
         }
     }
 

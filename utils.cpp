@@ -3,56 +3,73 @@
 
 int min(int a, int b)
 {
-    return (a < b ? a : b);
+    if (a <= b) {
+        return a;
+    }
+    return b;
 }
 
 double min(double a, double b)
 {
-    return (a < b ? a : b);
+    if (a <= b) {
+        return a;
+    }
+    return b;
 }
 
 double max(double a, double b)
 {
-    return (a > b ? a : b);
+    if (a >= b) {
+        return a;
+    }
+    return b;
 }
 
 int local_to_global(int m, int p, int k, int j_loc)
 {
-    int j_loc_m = j_loc / m;
-    int j_glob_m = j_loc_m * p + k;
-    return j_glob_m * m + j_loc % m;
+    int localBlock = j_loc / m;
+    int globalBlock = localBlock * p + k;
+    int localOffset = j_loc % m;
+    return globalBlock * m + localOffset;
 }
 
 int global_to_local(int m, int p, int j_glob)
 {
-    int j_glob_m = j_glob / m;
-    int j_loc_m = j_glob_m / p;
-    return j_loc_m * m + j_glob % m;
+    int globalBlock = j_glob / m;
+    int localBlock = globalBlock / p;
+    int localOffset = j_glob % m;
+    return localBlock * m + localOffset;
 }
 
 int numOfBlockColsInProc(int n, int m, int p, int k)
 {
-    int totalBlockNum = (n + m - 1) / m;
-    return (((totalBlockNum % p) > k) ? (totalBlockNum / p + 1) : (totalBlockNum / p));
+    int totalBlocks = (n + m - 1) / m;
+    int baseBlocks = totalBlocks / p;
+    int extraBlocks = (totalBlocks % p > k) ? 1 : 0;
+    return baseBlocks + extraBlocks;
 }
 
 int numOfColsInProc(int n, int m, int p, int k)
 {
-    int fullColIter = m * p;
-    int colNum = (n / fullColIter) * m;
-    int remCols = n % fullColIter;
-    int remFullBlocks = remCols / m;
-    if (k < remFullBlocks) {
-        colNum += m; 
-    } else if (k == remFullBlocks) {
-        colNum += (remCols % m);
+    int fullBlockSize = m * p;
+    int completeBlocks = n / fullBlockSize;
+    int baseCols = completeBlocks * m;
+    
+    int remainingCols = n % fullBlockSize;
+    int fullBlocksInRemainder = remainingCols / m;
+    int partialBlockSize = remainingCols % m;
+    
+    if (k < fullBlocksInRemainder) {
+        return baseCols + m;
+    } else if (k == fullBlocksInRemainder) {
+        return baseCols + partialBlockSize;
     }
-
-    return colNum;
+    
+    return baseCols;
 }
 
 int getNumOfProc(int m, int p, int j_glob)
 {
-    int j_glob_m = j_glob / m;
-    return (j_glob_m % p);
+    int globalBlock = j_glob / m;
+    return globalBlock % p;
 } 

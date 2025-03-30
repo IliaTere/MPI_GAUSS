@@ -6,11 +6,20 @@
 
 void initInvertedStatus(int p, int k, int locBlocks, int totalBlocks, int *a)
 {
-    for (int row = 0; row < totalBlocks; row++) {
-        for (int col = 0; col < locBlocks; col++) {
-            int globalCol = local_to_global(1, p, k, col);
-            int status = (row == globalCol) ? 1 : 0;
-            a[row * locBlocks + col] = status;
+    // Initialize status array with zeros
+    std::fill(a, a + totalBlocks * locBlocks, 0);
+    
+    // Set diagonal elements to 1
+    for (int blockRow = 0; blockRow < totalBlocks; blockRow++) {
+        for (int localCol = 0; localCol < locBlocks; localCol++) {
+            // Convert local column index to global
+            int globalColIndex = local_to_global(1, p, k, localCol);
+            
+            // Set status to 1 if we're on the diagonal
+            if (blockRow == globalColIndex) {
+                int arrayIndex = blockRow * locBlocks + localCol;
+                a[arrayIndex] = 1;
+            }
         }
     }
 }

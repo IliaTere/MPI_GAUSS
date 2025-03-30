@@ -1,78 +1,92 @@
 #include "matrix_operations.h"
 #include "utils.h"
+#include <immintrin.h>
 #include <cstring>
 #include <cmath>
 
 void getBlock(int n, int m, int indv, int indh, int l,
                 int h, double *a, double *block)
 {
-    int i;
-    for (i = 0; i < h; ++i) {
-        memcpy(block + i * l,
-                a + indv * n * m + indh * m + i * n, l * sizeof(double));
+    double* sourceMatrix = a + (indv * n * m) + (indh * m);
+    
+    for (int row = 0; row < h; row++) {
+        double* sourceRow = sourceMatrix + (row * n);
+        double* destRow = block + (row * l);
+        
+        memcpy(destRow, sourceRow, sizeof(double) * l);
     }
 }
 
 void putBlock(int n, int m, int indv, int indh, int l,
                 int h, double *a, double *block)
 {
-    int i;
-    for (i = 0; i < h; ++i) {
-        memcpy(a + indv * n * m + indh * m + i * n,
-                block + i * l, l * sizeof(double));
+    double* destStart = a + (indv * n * m) + (indh * m);
+    
+    for (int rowIdx = 0; rowIdx < h; rowIdx++) {
+        double* srcPtr = block + (rowIdx * l);
+        double* dstPtr = destStart + (rowIdx * n);
+        
+        memcpy(dstPtr, srcPtr, l * sizeof(double));
     }
 }
 
 void initSimpleUnitMatrix(int n, double *a)
 {
-    int i, j;
-    for (i = 0; i < n; ++i) {
-        for (j = 0; j < n; ++j) {
-            a[i * n + j] = (i == j ? 1.0 : 0.0);
-        }
+    for (int i = 0; i < n * n; i++) {
+        a[i] = 0.0;
+    }
+    
+    for (int diag = 0; diag < n; diag++) {
+        a[diag * n + diag] = 1.0;
     }
 }
 
 double simpleFindNorm(int n, double *a)
 {
-    double norm = 0.0;
-    double curNorm;
-    int i, j;
-    for (i = 0; i < n; ++i) {
-        curNorm = fabs(a[i]);
-        for (j = 1; j < n; ++j) {
-            curNorm += fabs(a[i + j * n]);
+    double maxRowSum = 0.0;
+    
+    for (int row = 0; row < n; row++) {
+        double rowSum = 0.0;
+        for (int col = 0; col < n; col++) {
+            rowSum += fabs(a[row + col * n]);
         }
-
-        if (curNorm > norm) {
-            norm = curNorm;
+        
+        if (rowSum > maxRowSum) {
+            maxRowSum = rowSum;
         }
     }
-
-    return norm;
+    
+    return maxRowSum;
 }
 
 double procFindNorm(int n, int procCol, double *a, MPI_Comm com)
 {
-    double locNorm = 0.0;
-    double curNorm;
-    double globalNorm = 0.0;
-    int i, j;
-    for (i = 0; i < procCol; ++i) {
-        curNorm = fabs(a[i]);
-        //printf("curNorm %lf\n", curNorm);
-        for (j = 1; j < n; ++j) {
-            curNorm += fabs(a[i + j * procCol]);
+    double localMax = 0.0;
+    double globalMax = 0.0;
+    
+    for (int currentRow = 0; currentRow < procCol; currentRow++) {
+        double rowSum = std::fabs(a[currentRow]);
+        
+        for (int colOffset = 1; colOffset < n; colOffset++) {
+            int elementIndex = currentRow + colOffset * procCol;
+            rowSum += std::fabs(a[elementIndex]);
         }
-
-        if (curNorm > locNorm) {
-            locNorm = curNorm;
+        
+        if (rowSum > localMax) {
+            localMax = rowSum;
         }
     }
-
-    //printf("norm %lf\n", locNorm);
-    MPI_Allreduce(&locNorm, &globalNorm, 1, MPI_DOUBLE, MPI_MAX, com);
-    return globalNorm;
+    
+    MPI_Allreduce(
+        &localMax,
+        &globalMax,
+        1,
+        MPI_DOUBLE,
+        MPI_MAX,
+        com
+    );
+    
+    return globalMax;
 }
 
 double findCorEl(int n, int m, int procCols, int k, int p, double *a,
@@ -82,7 +96,6 @@ double findCorEl(int n, int m, int procCols, int k, int p, double *a,
     int lastColProc = getNumOfProc(m, p, n - 1);
     if (k == lastColProc) {
         corEl = a[n * procCols - 1];
-        //corEl *= corEl;
     }
 
     MPI_Bcast(&corEl, 1, MPI_DOUBLE, lastColProc, com);
@@ -90,6 +103,147 @@ double findCorEl(int n, int m, int procCols, int k, int p, double *a,
     return corEl;
 }
 
+// void mult_sse(double *a, double *b, double *res, int m1, int m2, int m3, int m /*double norm, int n*/)
+// {
+//     // Оптимизированная версия для x86 архитектуры
+//     // double upper_threshold = (n < 11000) ? 1e+200 * norm : 1e+16 * norm;
+//     // double lower_threshold = (n < 11000) ? 1e-100 * norm : 1e-16 * norm;
+//     // int count_b = 0;
+    
+//     // Проверка значений на пороговые величины и обнуление результата
+//     for (int i = 0; i < m; i++)
+//     {
+//         for (int j = 0; j < m; j++)
+//         {
+//             res[i * m + j] = 0.0;
+//             // double local = fabs(b[i*m+j]);
+//             // if (upper_threshold < local || local < lower_threshold)
+//             // {
+//             //     b[i * m + j] = 0.;
+//             //     count_b++;
+//             // }
+//         }
+//     }
+    
+//     // Если все значения в b были обнулены, возвращаем нулевую матрицу
+//     // if(count_b == m*m) {
+//     //     return;
+//     // }
+    
+//     int v = m1, h = m3, ah = m2;
+//     int i, j, k;
+    
+//     // Обработка блоками 2x2 (развертывание внешних циклов)
+//     for (i = 0; i <= v - 2; i += 2)
+//     {
+//         for (j = 0; j <= h - 2; j += 2)
+//         {
+//             // Используем 4 аккумулятора SSE для 2x2 блока результата
+//             __m128d sum00 = _mm_setzero_pd();
+//             __m128d sum01 = _mm_setzero_pd();
+//             __m128d sum10 = _mm_setzero_pd();
+//             __m128d sum11 = _mm_setzero_pd();
+            
+//             // Развертывание внутреннего цикла для более эффективного использования SSE
+//             for (k = 0; k <= ah - 4; k += 4)
+//             {
+//                 // Загрузка строк матрицы a
+//                 __m128d a0_vec0 = _mm_set_pd(a[i * m + (k+1)], a[i * m + k]);
+//                 __m128d a0_vec1 = _mm_set_pd(a[i * m + (k+3)], a[i * m + (k+2)]);
+//                 __m128d a1_vec0 = _mm_set_pd(a[(i+1) * m + (k+1)], a[(i+1) * m + k]);
+//                 __m128d a1_vec1 = _mm_set_pd(a[(i+1) * m + (k+3)], a[(i+1) * m + (k+2)]);
+                
+//                 // Загрузка столбцов матрицы b
+//                 __m128d b0_vec0 = _mm_set_pd(b[(k+1) * m + j], b[k * m + j]);
+//                 __m128d b0_vec1 = _mm_set_pd(b[(k+3) * m + j], b[(k+2) * m + j]);
+//                 __m128d b1_vec0 = _mm_set_pd(b[(k+1) * m + (j+1)], b[k * m + (j+1)]);
+//                 __m128d b1_vec1 = _mm_set_pd(b[(k+3) * m + (j+1)], b[(k+2) * m + (j+1)]);
+                
+//                 // Умножение и накопление для блока 2x2
+//                 sum00 = _mm_add_pd(sum00, _mm_mul_pd(a0_vec0, b0_vec0));
+//                 sum00 = _mm_add_pd(sum00, _mm_mul_pd(a0_vec1, b0_vec1));
+                
+//                 sum01 = _mm_add_pd(sum01, _mm_mul_pd(a0_vec0, b1_vec0));
+//                 sum01 = _mm_add_pd(sum01, _mm_mul_pd(a0_vec1, b1_vec1));
+                
+//                 sum10 = _mm_add_pd(sum10, _mm_mul_pd(a1_vec0, b0_vec0));
+//                 sum10 = _mm_add_pd(sum10, _mm_mul_pd(a1_vec1, b0_vec1));
+                
+//                 sum11 = _mm_add_pd(sum11, _mm_mul_pd(a1_vec0, b1_vec0));
+//                 sum11 = _mm_add_pd(sum11, _mm_mul_pd(a1_vec1, b1_vec1));
+//             }
+            
+//             // Обработка оставшихся элементов
+//             for (; k <= ah - 2; k += 2)
+//             {
+//                 __m128d a0_vec = _mm_set_pd(a[i * m + (k+1)], a[i * m + k]);
+//                 __m128d a1_vec = _mm_set_pd(a[(i+1) * m + (k+1)], a[(i+1) * m + k]);
+                
+//                 __m128d b0_vec = _mm_set_pd(b[(k+1) * m + j], b[k * m + j]);
+//                 __m128d b1_vec = _mm_set_pd(b[(k+1) * m + (j+1)], b[k * m + (j+1)]);
+                
+//                 sum00 = _mm_add_pd(sum00, _mm_mul_pd(a0_vec, b0_vec));
+//                 sum01 = _mm_add_pd(sum01, _mm_mul_pd(a0_vec, b1_vec));
+//                 sum10 = _mm_add_pd(sum10, _mm_mul_pd(a1_vec, b0_vec));
+//                 sum11 = _mm_add_pd(sum11, _mm_mul_pd(a1_vec, b1_vec));
+//             }
+            
+//             // Горизонтальное сложение для получения скалярных значений
+//             double sum00_arr[2], sum01_arr[2], sum10_arr[2], sum11_arr[2];
+//             _mm_storeu_pd(sum00_arr, sum00);
+//             _mm_storeu_pd(sum01_arr, sum01);
+//             _mm_storeu_pd(sum10_arr, sum10);
+//             _mm_storeu_pd(sum11_arr, sum11);
+            
+//             double total00 = sum00_arr[0] + sum00_arr[1];
+//             double total01 = sum01_arr[0] + sum01_arr[1];
+//             double total10 = sum10_arr[0] + sum10_arr[1];
+//             double total11 = sum11_arr[0] + sum11_arr[1];
+            
+//             // Обработка оставшегося одиночного элемента (если ah нечетное)
+//             if (k < ah) {
+//                 total00 += a[i * m + k] * b[k * m + j];
+//                 total01 += a[i * m + k] * b[k * m + (j+1)];
+//                 total10 += a[(i+1) * m + k] * b[k * m + j];
+//                 total11 += a[(i+1) * m + k] * b[k * m + (j+1)];
+//             }
+            
+//             // Запись результатов
+//             res[i * m + j] += total00;
+//             res[i * m + (j+1)] += total01;
+//             res[(i+1) * m + j] += total10;
+//             res[(i+1) * m + (j+1)] += total11;
+//         }
+        
+//         // Обработка оставшегося столбца (если h нечетное)
+//         if (j < h) {
+//             for (int i2 = i; i2 < i + 2 && i2 < v; i2++) {
+//                 double sum = 0.0;
+//                 for (k = 0; k < ah; k++) {
+//                     sum += a[i2 * m + k] * b[k * m + j];
+//                 }
+//                 res[i2 * m + j] += sum;
+//             }
+//         }
+//     }
+    
+//     // Обработка оставшейся строки (если v нечетное)
+//     if (i < v) {
+//         for (j = 0; j < h; j++) {
+//             double sum = 0.0;
+//             for (k = 0; k < ah; k++) {
+//                 sum += a[i * m + k] * b[k * m + j];
+//             }
+//             res[i * m + j] += sum;
+//         }
+//     }
+// }
+
+// void multMatr(double *a, double *b, double *c,
+//                 int rowNum1, int colNum1, int colNum2, int m)
+// {
+//     mult_sse(a, b, c, rowNum1, colNum1, colNum2, m);
+// }
 void multMatr(double *a, double *b, double *c,
                 int rowNum1, int colNum1, int colNum2, int m)
 {
